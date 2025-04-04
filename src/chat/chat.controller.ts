@@ -1,6 +1,6 @@
 import { Controller, Post, Body, Logger, Get } from '@nestjs/common';
 import { ChatService } from './chat.service';
-import { ChatRequestDto, ChatResponseDto } from './dto/chat.dto';
+import { ChatRequestDto } from './dto/chat.dto';
 
 @Controller('chat')
 export class ChatController {
@@ -11,14 +11,14 @@ export class ChatController {
   ) {}
 
   @Post()
-  async chat(@Body() chatRequest: ChatRequestDto): Promise<ChatResponseDto> {
+  async chat(@Body() chatRequest: ChatRequestDto): Promise<String> {
     this.logger.log(`Processing prompt: ${chatRequest.prompt}`);    
     return this.chatService.processChat(chatRequest);
   }
 
   @Get('test')
-  async testChat(): Promise<ChatResponseDto> {
+  async testChat(): Promise<String> {
     this.logger.log('Testing chat endpoint');
-    return this.chatService.processChat({prompt: 'How has the consumer sentiment looked lately for the US economy?'});
+    return this.chatService.processChat({prompt: 'Whats shakin bacon?'});
   }
 }

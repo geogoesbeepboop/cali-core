@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LlmService } from './llm.service';
+import { LlmService } from '../llm/llm.service';
 import { ChatRequestDto } from './dto/chat.dto';
 import { ResponseInput } from 'openai/resources/responses/responses';
 
@@ -26,7 +26,7 @@ export class ChatService {
       const response = await this.llmService.processChat(messages);
       
       this.logger.log('Chat processed successfully');
-      return { response };
+      return response;
     } catch (error) {
       this.logger.error('Error processing chat:', error);
       throw error;

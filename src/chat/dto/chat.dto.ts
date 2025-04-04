@@ -3,5 +3,5 @@ export class ChatRequestDto {
 }
 
 export class ChatResponseDto {
-  response: string;
+  data : string
 }
