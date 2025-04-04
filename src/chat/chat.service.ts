@@ -1,49 +1,34 @@
-import { Injectable } from '@nestjs/common';
-import OpenAI from 'openai';
+import { Injectable, Logger } from '@nestjs/common';
+import { LlmService } from './llm.service';
+import { ChatRequestDto } from './dto/chat.dto';
+import { ResponseInput } from 'openai/resources/responses/responses';
 
 @Injectable()
 export class ChatService {
-  private openai: OpenAI;
+  private readonly logger = new Logger(ChatService.name);
 
-  constructor() {
-    // Initialize OpenAI in a real implementation
-    // this.openai = new OpenAI({
-    //   apiKey: process.env.OPENAI_API_KEY,
-    // });
-  }
+  constructor(private readonly llmService: LlmService) {}
 
-  async processChat(messages: Array<{ role: string; content: string }>) {
-    try {
-      // This is a mock response for development
-      // In production, you would call the OpenAI API with Model Context Protocol
+  /**
+   * Process chat messages and return AI response
+   * @param messages Array of chat messages from the user
+   * @returns Object containing the AI response
+   */
+  async processChat(chatRequest: ChatRequestDto) {
+    try {      
+      // Add a system message if one doesn't exist
+      const messages: ResponseInput = [];
+      messages.push({
+        role: 'user', 
+        content: chatRequest.prompt
+      });
+      // Process the chat with the LLM service
+      const response = await this.llmService.processChat(messages);
       
-      // Example of how you would call OpenAI:
-      // const completion = await this.openai.chat.completions.create({
-      //   model: "gpt-4o",
-      //   messages: [
-      //     { role: "system", content: "You are Cali, a financial AI advisor specializing in economic analysis and stock insights." },
-      //     ...messages.map(msg => ({ 
-      //       role: msg.role === 'system' ? 'assistant' : msg.role as any, 
-      //       content: msg.content 
-      //     }))
-      //   ],
-      //   temperature: 0.7,
-      // });
-      // return { response: completion.choices[0].message.content };
-
-      // Mock response for development
-      const mockResponses = [
-        "backend response for testing"
-      ];
-
-      const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
-      
-      // Add a small delay to simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      return { response: randomResponse };
+      this.logger.log('Chat processed successfully');
+      return { response };
     } catch (error) {
-      console.error('Error processing chat:', error);
+      this.logger.error('Error processing chat:', error);
       throw error;
     }
   }

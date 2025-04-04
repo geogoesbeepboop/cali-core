@@ -11,18 +11,11 @@ export class FredController {
     private readonly fredMcpService: FredMcpService,
   ) {}
 
-  @Get('series')
-  async getAllSeries() {
-    return {
-      availableSeries: this.fredService.getAvailableSeriesIds(),
-    };
-  }
-
   @Get('series/:id')
-  async getSeriesData(@Param('id') id: string, @Query('limit') limit?: number) {
+  async getSeriesData(@Param('id') id: string, @Query('limit') limit?: number, @Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
     const parsedLimit = limit ? parseInt(limit.toString(), 10) : 100;
-    const data = await this.fredService.getMultipleSeriesData([id], parsedLimit);
-    return data[0] || { error: 'Series not found' };
+    const data = await this.fredService.getMultipleSeriesData([id], parsedLimit, startDate, endDate);
+    return data[0] || { error: 'Error fetching series: ' + id };
   }
 
   @Get('mcp/contexts')
@@ -48,25 +41,5 @@ export class FredController {
     
     const contexts = await this.fredMcpService.getMcpContextsForSeries(body.seriesIds);
     return { contexts };
-  }
-
-  @Post('series/add')
-  async addSeries(@Body() body: { seriesId: string }) {
-    if (!body.seriesId) {
-      return { error: 'seriesId is required' };
-    }
-    
-    const success = await this.fredMcpService.addSeries(body.seriesId);
-    if (success) {
-      return { message: `Series ${body.seriesId} added successfully` };
-    } else {
-      return { error: `Failed to add series ${body.seriesId}` };
-    }
-  }
-
-  @Post('cache/update')
-  async updateCache() {
-    await this.fredMcpService.forceUpdateCache();
-    return { message: 'Cache updated successfully' };
   }
 }

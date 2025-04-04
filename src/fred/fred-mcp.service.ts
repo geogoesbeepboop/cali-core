@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FredService, FredSeriesData } from './fred.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { RedisService } from '../redis/redis.service';
 
 // Define the MCP Context structure
 export interface McpContext {
@@ -21,41 +22,29 @@ export interface McpContext {
 @Injectable()
 export class FredMcpService {
   private readonly logger = new Logger(FredMcpService.name);
-  private cachedData: Map<string, FredSeriesData> = new Map();
   private lastUpdated: Date = new Date();
+  private readonly CACHE_TTL = 24 * 60 * 60; // 24 hours in seconds
+  private readonly SERIES_PREFIX = 'fred:series:';
+  private readonly METADATA_PREFIX = 'fred:metadata:';
 
-  constructor(private readonly fredService: FredService) {
+  constructor(
+    private readonly fredService: FredService,
+    private readonly redisService: RedisService,
+  ) {
     // Initialize cache on service start
-    this.updateCache();
+    this.initializeCache();
   }
 
   /**
-   * Update the cache with fresh data from FRED API
-   * Runs automatically every day at midnight
+   * Initialize cache on service start
    */
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async updateCache(): Promise<void> {
+  private async initializeCache(): Promise<void> {
     try {
-      this.logger.log('Updating FRED data cache...');
-      const seriesData = await this.fredService.getAllDefaultSeriesData();
-      
-      // Update the cache with new data
-      seriesData.forEach(series => {
-        this.cachedData.set(series.id, series);
-      });
-      
-      this.lastUpdated = new Date();
-      this.logger.log(`FRED data cache updated successfully. ${this.cachedData.size} series cached.`);
+      this.logger.log('Initializing FRED data cache');
+      // We could pre-populate cache with commonly used series here if needed
     } catch (error) {
-      this.logger.error(`Failed to update FRED data cache: ${error.message}`);
+      this.logger.error(`Error initializing cache: ${error.message}`);
     }
-  }
-
-  /**
-   * Force update the cache immediately
-   */
-  async forceUpdateCache(): Promise<void> {
-    await this.updateCache();
   }
 
   /**
@@ -65,20 +54,24 @@ export class FredMcpService {
    */
   async getMcpContextForSeries(seriesId: string): Promise<McpContext | null> {
     try {
-      // Check if we have cached data
-      let seriesData = this.cachedData.get(seriesId);
+      // Check cache first
+      const cachedData = await this.getSeriesFromCache(seriesId);
       
-      // If not in cache or cache is stale (older than 24 hours), fetch fresh data
-      if (!seriesData || this.isCacheStale()) {
-        seriesData = (await this.fredService.getMultipleSeriesData([seriesId]))[0];
-        if (seriesData) {
-          this.cachedData.set(seriesId, seriesData);
-        }
+      if (cachedData) {
+        this.logger.log(`Retrieved series ${seriesId} from cache`);
+        return this.createMcpContext(cachedData);
       }
+      
+      // Fetch from API if not in cache
+      let seriesData = (await this.fredService.getMultipleSeriesData([seriesId]))[0];
       
       if (!seriesData) {
+        this.logger.warn(`Series ${seriesId} not found in FRED`);
         return null;
       }
+      
+      // Cache the data
+      await this.cacheSeriesData(seriesId, seriesData);
       
       // Create MCP context from series data
       return this.createMcpContext(seriesData);
@@ -93,18 +86,9 @@ export class FredMcpService {
    * @returns Array of MCP context objects
    */
   async getAllMcpContexts(): Promise<McpContext[]> {
-    try {
-      // If cache is stale, update it
-      if (this.isCacheStale()) {
-        await this.updateCache();
-      }
-      
-      // Convert all cached data to MCP contexts
+    try {      
+      // TODO: Implement logic to retrieve all series from cache or API
       const contexts: McpContext[] = [];
-      for (const seriesData of this.cachedData.values()) {
-        contexts.push(this.createMcpContext(seriesData));
-      }
-      
       return contexts;
     } catch (error) {
       this.logger.error(`Error getting all MCP contexts: ${error.message}`);
@@ -117,32 +101,45 @@ export class FredMcpService {
    * @param seriesIds Array of FRED series identifiers
    * @returns Array of MCP context objects
    */
-  async getMcpContextsForSeries(seriesIds: string[]): Promise<McpContext[]> {
+  async getMcpContextsForSeries(seriesIds: string[], limit?: number, startDate?: string, endDate?: string): Promise<McpContext[]> {
     try {
       const contexts: McpContext[] = [];
       
       // Check which series we need to fetch
       const seriesIdsToFetch: string[] = [];
+      const cachedSeriesData: Map<string, FredSeriesData> = new Map();
+      
+      // Try to get data from cache first
       for (const seriesId of seriesIds) {
-        if (!this.cachedData.has(seriesId) || this.isCacheStale()) {
+        const cachedData = await this.getSeriesFromCache(seriesId);
+        
+        if (cachedData) {
+          this.logger.log(`Retrieved series ${seriesId} from cache`);
+          cachedSeriesData.set(seriesId, cachedData);
+        } else {
           seriesIdsToFetch.push(seriesId);
         }
       }
       
-      // Fetch any missing or stale data
+      // Fetch fresh data for series not in cache
+      let freshData: FredSeriesData[] = [];
       if (seriesIdsToFetch.length > 0) {
-        const freshData = await this.fredService.getMultipleSeriesData(seriesIdsToFetch);
-        for (const seriesData of freshData) {
-          this.cachedData.set(seriesData.id, seriesData);
+        freshData = await this.fredService.getMultipleSeriesData(seriesIdsToFetch, limit, startDate, endDate);
+        
+        // Cache the fresh data
+        for (const data of freshData) {
+          await this.cacheSeriesData(data.id, data);
         }
       }
       
-      // Create MCP contexts for requested series
-      for (const seriesId of seriesIds) {
-        const seriesData = this.cachedData.get(seriesId);
-        if (seriesData) {
-          contexts.push(this.createMcpContext(seriesData));
-        }
+      // Create MCP contexts from cached data
+      for (const [_, data] of cachedSeriesData.entries()) {
+        contexts.push(this.createMcpContext(data));
+      }
+      
+      // Create MCP contexts from fresh data
+      for (const data of freshData) {
+        contexts.push(this.createMcpContext(data));
       }
       
       return contexts;
@@ -153,39 +150,39 @@ export class FredMcpService {
   }
 
   /**
-   * Add a new series to track
-   * @param seriesId The FRED series identifier to add
-   * @returns true if added successfully, false otherwise
+   * Cache series data in Redis
+   * @param seriesId The series ID
+   * @param data The series data to cache
    */
-  async addSeries(seriesId: string): Promise<boolean> {
+  private async cacheSeriesData(seriesId: string, data: FredSeriesData): Promise<void> {
     try {
-      // First check if the series exists in FRED by trying to fetch it
-      const seriesData = await this.fredService.getMultipleSeriesData([seriesId]);
-      
-      if (seriesData.length > 0) {
-        // Add to the default list in FredService
-        this.fredService.addSeriesId(seriesId);
-        
-        // Add to our cache
-        this.cachedData.set(seriesId, seriesData[0]);
-        
-        this.logger.log(`Added new series ${seriesId} to tracking`);
-        return true;
-      }
-      
-      return false;
+      const key = this.SERIES_PREFIX + seriesId;
+      await this.redisService.set(key, JSON.stringify(data), this.CACHE_TTL);
+      this.logger.log(`Cached series ${seriesId} data`);
     } catch (error) {
-      this.logger.error(`Error adding series ${seriesId}: ${error.message}`);
-      return false;
+      this.logger.error(`Error caching series ${seriesId} data: ${error.message}`);
     }
   }
 
   /**
-   * Get the list of available series IDs
-   * @returns Array of series IDs
+   * Get series data from Redis cache
+   * @param seriesId The series ID
+   * @returns The series data or null if not in cache
    */
-  getAvailableSeriesIds(): string[] {
-    return this.fredService.getAvailableSeriesIds();
+  private async getSeriesFromCache(seriesId: string): Promise<FredSeriesData | null> {
+    try {
+      const key = this.SERIES_PREFIX + seriesId;
+      const cachedData = await this.redisService.get(key);
+      
+      if (!cachedData) {
+        return null;
+      }
+      
+      return JSON.parse(cachedData) as FredSeriesData;
+    } catch (error) {
+      this.logger.error(`Error getting series ${seriesId} from cache: ${error.message}`);
+      return null;
+    }
   }
 
   /**
@@ -222,5 +219,15 @@ export class FredMcpService {
         lastUpdated: seriesData.lastUpdated,
       },
     };
+  }
+
+  /**
+   * Update cache daily at midnight
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async updateCache() {
+    this.logger.log('Running scheduled cache update');
+    // Implement logic to update cached series data
+    this.lastUpdated = new Date();
   }
 }
