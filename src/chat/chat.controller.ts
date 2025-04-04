@@ -18,7 +18,7 @@ export class ChatController {
 
   @Get('test')
   async testChat(): Promise<ChatResponseDto> {
-    this.logger.log('Testing chat with economic data integration');
-    return this.chatService.processChat({prompt: 'give me a summary of how inflation has been progressing since the 2020 pandemic'});
+    this.logger.log('Testing chat endpoint');
+    return this.chatService.processChat({prompt: 'How has the consumer sentiment looked lately for the US economy?'});
   }
 }

@@ -2,9 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { FredMcpService } from '../fred/fred-mcp.service';
-import { McpContext } from '../fred/fred-mcp.service';
-import { ResponseInput, Tool, ResponseInputItem, EasyInputMessage, ResponseFunctionToolCallOutputItem } from 'openai/resources/responses/responses';
-import { createHash } from 'crypto';
+import { ResponseInput, Tool, ResponseInputItem, EasyInputMessage, ResponseOutputMessage, ResponseOutputText } from 'openai/resources/responses/responses';
 
 @Injectable()
 export class LlmService {
@@ -14,7 +12,7 @@ export class LlmService {
     {
       type: "function",
       name: "get_economic_data",
-      description: "Get economic data sourced from FRED (Federal Reserve Economic Data) to give detailed context to the user's questions about the US economy",
+      description: "Get economic data sourced from FRED (Federal Reserve Economic Data) for economic analysis",
       parameters: {
         type: "object",
         properties: {
@@ -45,7 +43,15 @@ export class LlmService {
         required: ["seriesIds"], 
       }, 
       strict: false
-    }
+    },
+    {
+      type: "web_search_preview",
+      user_location: {
+          type: "approximate",
+          timezone: "America/New_York"
+      },
+      search_context_size: "medium"
+  }
   ];
   
   constructor(
@@ -114,13 +120,23 @@ export class LlmService {
 
         this.logger.debug(`Initial response ID: ${response.id}`);
         
-        // Check if the model wants to use any tools
+        // Check if the model wants to use any function tools
         const functionCalls = response.output.filter(output => output.type === 'function_call');
         
         if (functionCalls.length === 0) {
-          // No function calls, return the response directly
-          return response.output_text || 'I apologize, but I couldn\'t generate a response.';
+          // No function calls, return the response directly based off web or model
+          if(response.output[0].type === 'web_search_call') {
+            this.logger.debug(`Spotted web search response for call_id: ${response.output[0].id}`);
+            const message = response.output[1] as ResponseOutputMessage;
+            const content =  message.content[0] as ResponseOutputText;
+            return content.text || 'I apologize, but I couldn\'t generate a response.';
+          } else {
+            this.logger.debug(`Returning model response`);
+            return response.output_text || 'I apologize, but I couldn\'t generate a response.';
+          }
         }
+
+        
         
         // Process function calls and collect tool outputs
         const updatedMessages: ResponseInput = [...messages];
