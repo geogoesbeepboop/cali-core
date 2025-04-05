@@ -68,31 +68,6 @@ export class LlmService {
     });
   }
 
-  private isEasyInputMessage(obj: ResponseInputItem): obj is EasyInputMessage {
-    return (obj as EasyInputMessage).role !== undefined;
-  }
-
-  /**
-   * Generate a short, unique ID that's compatible with OpenAI's requirements
-   * @param prefix Optional prefix for the ID
-   * @returns A unique ID string no longer than 64 characters
-   */
-  private generateShortId(prefix: string = 'id'): string {
-    // Create a timestamp component (10 chars)
-    const timestamp = Date.now().toString(36);
-    
-    // Create a random component (6 chars)
-    const random = Math.random().toString(36).substring(2, 5);
-    
-    // Ensure the total length with prefix doesn't exceed 64 chars
-    const maxPrefixLength = 52; // 64 - 10 - 2 (separators)
-    const safePrefix = prefix.length > maxPrefixLength 
-      ? prefix.substring(0, maxPrefixLength) 
-      : prefix;
-    
-    return `${safePrefix}_${timestamp}_${random}`;
-  }
-
   /**
    * Process a chat conversation with economic context from FRED using function calling
    * @param messages Array of chat messages
@@ -136,8 +111,6 @@ export class LlmService {
           }
         }
 
-        
-        
         // Process function calls and collect tool outputs
         const updatedMessages: ResponseInput = [...messages];
         
@@ -211,11 +184,7 @@ export class LlmService {
           args.endDate
         );
       } 
-      
-      // Generate a compatible output ID that's within the 64-character limit
-      // The ID must be associated with the call_id but be unique and short
-      const outputId = this.generateShortId('fcout');
-      
+
       return {
         type: 'function_call_output',
         call_id: callId,
@@ -272,5 +241,30 @@ export class LlmService {
         message: error.message
       };
     }
+  }
+
+  private isEasyInputMessage(obj: ResponseInputItem): obj is EasyInputMessage {
+    return (obj as EasyInputMessage).role !== undefined;
+  }
+
+  /**
+   * Generate a short, unique ID that's compatible with OpenAI's requirements
+   * @param prefix Optional prefix for the ID
+   * @returns A unique ID string no longer than 64 characters
+   */
+  private generateShortId(prefix: string = 'id'): string {
+    // Create a timestamp component (10 chars)
+    const timestamp = Date.now().toString(36);
+    
+    // Create a random component (6 chars)
+    const random = Math.random().toString(36).substring(2, 5);
+    
+    // Ensure the total length with prefix doesn't exceed 64 chars
+    const maxPrefixLength = 52; // 64 - 10 - 2 (separators)
+    const safePrefix = prefix.length > maxPrefixLength 
+      ? prefix.substring(0, maxPrefixLength) 
+      : prefix;
+    
+    return `${safePrefix}_${timestamp}_${random}`;
   }
 }

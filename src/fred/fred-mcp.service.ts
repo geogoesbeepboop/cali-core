@@ -87,8 +87,11 @@ export class FredMcpService {
    */
   async getAllMcpContexts(): Promise<McpContext[]> {
     try {      
-      // TODO: Implement logic to retrieve all series from cache or API
       const contexts: McpContext[] = [];
+      const cachedSeriesData = await this.redisService.getAllCachedFredObjects();
+      for (const seriesData of cachedSeriesData) {
+        contexts.push(this.createMcpContext(JSON.parse(seriesData) as FredSeriesData));
+      }
       return contexts;
     } catch (error) {
       this.logger.error(`Error getting all MCP contexts: ${error.message}`);
@@ -226,8 +229,13 @@ export class FredMcpService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async updateCache() {
-    this.logger.log('Running scheduled cache update');
-    // Implement logic to update cached series data
+    this.logger.log('Running scheduled Fred cache update');
+    const cachedFredKeys = await this.redisService.getAllCachedFredKeys();
+    const seriesIds = cachedFredKeys.map(key => key.split(':')[2]);
+    const freshData = await this.fredService.getMultipleSeriesData(seriesIds);
+    for (const seriesData of freshData) {
+      this.cacheSeriesData(seriesData.id, seriesData);
+    }
     this.lastUpdated = new Date();
   }
 }

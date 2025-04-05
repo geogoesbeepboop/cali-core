@@ -125,4 +125,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       return false;
     }
   }
+
+  /**
+   * Get all cached objects from Redis
+   * @returns Record of all cached objects
+   */
+  async getAllCachedFredObjects(): Promise<string[]> {
+    const keys: string[] = await this.redisClient.keys('*');
+    return await Promise.all(keys.map(key => this.redisClient.get(key)));
+  }
+
+  async getAllCachedFredKeys(): Promise<string[]> {
+    return await this.redisClient.keys('fred:series:*');
+  }
 }

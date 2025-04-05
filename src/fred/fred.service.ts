@@ -104,37 +104,53 @@ export class FredService {
    * Get data for multiple series
    * @param seriesIds Array of series identifiers
    * @param limit Optional limit on number of observations per series
+   * @param startDate Optional start date for observations
+   * @param endDate Optional end date for observations
    * @returns Array of series data
    */
-  async getMultipleSeriesData(seriesIds: string[], limit = 100, startDate?: string, endDate?: string): Promise<FredSeriesData[]> {
+  async getMultipleSeriesData(seriesIds: string[], limit?: number, startDate?: string, endDate?: string): Promise<FredSeriesData[]> {
     const results: FredSeriesData[] = [];
     
     for (const seriesId of seriesIds) {
-      try {
-        const seriesInfo = await this.getSeriesInfo(seriesId);
-        const observationsData = await this.getSeriesObservations(seriesId, startDate, endDate, limit);
-        
-        if (seriesInfo && observationsData && observationsData.observations) {
-          const seriesData: FredSeriesData = {
-            id: seriesId,
-            title: seriesInfo.seriess[0]?.title || 'Unknown',
-            frequency: seriesInfo.seriess[0]?.frequency_short || 'Unknown',
-            units: seriesInfo.seriess[0]?.units_short || 'Unknown',
-            lastUpdated: seriesInfo.seriess[0]?.last_updated || new Date().toISOString(),
-            observations: observationsData.observations.map(obs => ({
-              date: obs.date,
-              value: isNaN(parseFloat(obs.value)) ? obs.value : parseFloat(obs.value)
-            }))
-          };
-          
-          results.push(seriesData);
-        }
-      } catch (error) {
-        this.logger.error(`Error processing series ${seriesId}: ${error.message}`);
-        // Continue with other series even if one fails
+      const seriesData = await this.getSeriesData(seriesId, limit, startDate, endDate);
+      if (seriesData) {
+        results.push(seriesData);
       }
     }
-    
     return results;
+  }
+
+  /**
+   * Get data for a single series
+   * @param seriesId The FRED series identifier
+   * @param limit Optional limit on number of observations
+   * @param startDate Optional start date for observations
+   * @param endDate Optional end date for observations
+   * @returns Series data object
+   */
+  async getSeriesData(seriesId: string, limit?: number | 100, startDate?: string, endDate?: string): Promise<FredSeriesData> {
+    try {
+      const seriesInfo = await this.getSeriesInfo(seriesId);
+      const observationsData = await this.getSeriesObservations(seriesId, startDate, endDate, limit);
+      
+      if (seriesInfo && observationsData && observationsData.observations) {
+        const seriesData: FredSeriesData = {
+          id: seriesId,
+          title: seriesInfo.seriess[0]?.title || 'Unknown',
+          frequency: seriesInfo.seriess[0]?.frequency_short || 'Unknown',
+          units: seriesInfo.seriess[0]?.units_short || 'Unknown',
+          lastUpdated: seriesInfo.seriess[0]?.last_updated || new Date().toISOString(),
+          observations: observationsData.observations.map(obs => ({
+            date: obs.date,
+            value: isNaN(parseFloat(obs.value)) ? obs.value : parseFloat(obs.value)
+          }))
+        };
+        
+        return seriesData;
+      }
+    } catch (error) {
+      this.logger.error(`Error processing series ${seriesId}: ${error.message}`);
+      return null;
+    }
   }
 }
