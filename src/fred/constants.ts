@@ -1,0 +1,1 @@
+export const TOP_SERIES_IDS = ['GDP', 'CPIAUCSL', 'UNRATE', 'FEDFUNDS', 'M2SL', 'DGS10', 'SP500', 'INDPRO', 'HOUST', 'PAYEMS'];

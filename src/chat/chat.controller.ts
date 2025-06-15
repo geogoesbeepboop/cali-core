@@ -2,7 +2,7 @@ import { Controller, Post, Body, Logger, Get } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { ChatRequestDto } from './dto/chat.dto';
 
-@Controller('chat')
+@Controller('/api/chat')
 export class ChatController {
   private readonly logger = new Logger(ChatController.name);
   
@@ -13,12 +13,12 @@ export class ChatController {
   @Post()
   async chat(@Body() chatRequest: ChatRequestDto): Promise<String> {
     this.logger.log(`Processing prompt: ${chatRequest.prompt}`);    
-    return this.chatService.processChat(chatRequest);
+    return (await this.chatService.processChat(chatRequest, '1')).response
   }
 
   @Get('test')
   async testChat(): Promise<String> {
     this.logger.log('Testing chat endpoint');
-    return this.chatService.processChat({prompt: 'Whats shakin bacon?'});
+    return (await this.chatService.processChat({prompt: 'Whats shakin bacon?'}, "test")).response;
   }
 }

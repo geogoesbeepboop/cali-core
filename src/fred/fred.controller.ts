@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Param, Query, Logger } from '@nestjs/commo
 import { FredService } from './fred.service';
 import { FredMcpService } from './fred-mcp.service';
 
-@Controller('fred')
+@Controller('/api/fred')
 export class FredController {
   private readonly logger = new Logger(FredController.name);
 
